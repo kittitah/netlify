@@ -427,7 +427,7 @@
     display: flex; justify-content: space-between;
     align-items: flex-start; gap: 10px; margin-bottom: 14px;
   }
-  /* Theme tag — small highlight at top-left of card */
+  /* Theme tag — small highlight inline with service name */
   .theme-tag {
     display: inline-flex;
     align-items: center;
@@ -441,8 +441,8 @@
     background: var(--accent);
     color: #0f1115;
     font-family: 'JetBrains Mono', monospace;
-    margin-bottom: 8px;
     white-space: nowrap;
+    flex-shrink: 0;
   }
   .card-title-wrap {
     flex: 1;
@@ -877,10 +877,6 @@
         <div class="page-subtitle" id="page-subtitle">ภาพรวมข้อมูลทั้งระบบ</div>
       </div>
       <div class="head-actions">
-        <button class="btn btn-ghost" id="btn-export" onclick="exportCSV()" style="display:none;">
-          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-          Export CSV
-        </button>
         <button class="btn btn-ghost" onclick="loadFromSheet()" title="ดึงข้อมูลใหม่จาก Sheet" id="btn-refresh">
           <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
           Refresh
@@ -1048,9 +1044,7 @@
       </div>
 
       <div class="ws-date-filter" id="ws-date-filter">
-        <div class="ws-date-filter-label">
-          กรองช่วงวัน <strong id="ws-date-field-label">Run</strong>:
-        </div>
+        <div class="ws-date-filter-label">เลือกวันที่:</div>
         <div class="date-input-group">
           <span>จาก</span>
           <input type="date" id="ws-date-from" onchange="onWsDateChange()">
@@ -1064,8 +1058,6 @@
         <div class="quick-range">
           <button class="quick-btn" data-range="thisMonth" onclick="applyWsQuickRange('thisMonth')">เดือนนี้</button>
           <button class="quick-btn" data-range="lastMonth" onclick="applyWsQuickRange('lastMonth')">เดือนที่แล้ว</button>
-          <button class="quick-btn" data-range="last3Months" onclick="applyWsQuickRange('last3Months')">3 เดือน</button>
-          <button class="quick-btn" data-range="thisYear" onclick="applyWsQuickRange('thisYear')">ปีนี้</button>
         </div>
         <button class="date-clear" id="ws-date-clear" onclick="clearWsDateRange()" disabled>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -1374,7 +1366,6 @@ function setPage(p) {
   currentPage = p;
   document.getElementById('view-dashboard').style.display = p === 'dashboard' ? '' : 'none';
   document.getElementById('view-websites').style.display = p === 'websites' ? '' : 'none';
-  document.getElementById('btn-export').style.display = p === 'websites' ? '' : 'none';
   document.getElementById('page-title').textContent = p === 'dashboard' ? 'Dashboard' : 'จัดการเว็บไซต์';
   if (p === 'dashboard') {
     document.getElementById('page-subtitle').textContent = 'ภาพรวมข้อมูลทั้งระบบ';
@@ -1389,7 +1380,6 @@ function goWebsites(opts) {
   showDupOnly = !!opts.showDupOnly;
   document.getElementById('view-dashboard').style.display = 'none';
   document.getElementById('view-websites').style.display = '';
-  document.getElementById('btn-export').style.display = '';
   document.getElementById('page-title').textContent = 'จัดการเว็บไซต์';
   render();
 }
@@ -1515,12 +1505,8 @@ function getWsDateField() {
 }
 
 function updateWsDateFieldLabel() {
-  const status = document.getElementById('filter-status').value;
-  let label = 'Run / Close (ทุกสถานะ)';
-  if (status === 'Run') label = 'Run';
-  else if (status === 'closed') label = 'Close';
-  else if (status === 'open') label = 'Open';
-  document.getElementById('ws-date-field-label').textContent = label;
+  // Label no longer displays the active date field, but keeping function
+  // so renderWebsites can still call it without breaking.
 }
 
 function inWsDateRange(record) {
@@ -1831,8 +1817,8 @@ function renderWebsites() {
       ${isDup ? '<span class="dup-tag">ซ้ำ</span>' : ''}
       <div class="card-head">
         <div class="card-title-wrap">
-          ${themeTagHTML}
           <div class="card-name-row">
+            ${themeTagHTML}
             <span class="card-name">${escapeHtml(serviceName)}</span>
             <button class="copy-btn" onclick="event.stopPropagation(); copyToClipboard(${JSON.stringify(serviceName).replace(/"/g,'&quot;')}, this)" title="คัดลอกชื่อ Service">${copyIcon}</button>
           </div>
