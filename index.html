@@ -453,11 +453,132 @@
     font-size: 10px; color: var(--text-mute);
     text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
   }
+  .role-value-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
   .role-value {
     font-size: 13px; color: var(--text); font-weight: 500;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    flex: 1; min-width: 0;
   }
   .role-divider { width: 1px; align-self: stretch; background: var(--border); }
+
+  /* Copy button — appears on hover; small icon-only */
+  .copy-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-mute);
+    width: 22px; height: 22px;
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s;
+    flex-shrink: 0;
+    font-family: inherit;
+  }
+  .copy-btn:hover {
+    background: var(--bg-elev-2);
+    border-color: var(--border-light);
+    color: var(--text);
+  }
+  .copy-btn.copied {
+    color: var(--green);
+    border-color: rgba(74, 222, 128, 0.3);
+    background: var(--green-bg);
+  }
+  .copy-btn svg { width: 12px; height: 12px; }
+
+  /* Sale chip next to status badge */
+  .head-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .sale-chip {
+    font-size: 10px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    background: var(--bg);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .sale-chip svg { width: 11px; height: 11px; opacity: 0.7; }
+
+  /* Spare domains row — two blocks side by side */
+  .spare-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+  .spare-block {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: var(--bg);
+    border: 1px solid transparent;
+    font-size: 12px;
+    min-width: 0;
+    transition: all 0.12s;
+  }
+  .spare-block:hover {
+    border-color: var(--border-light);
+    background: var(--bg-elev-2);
+  }
+  .spare-block.empty {
+    opacity: 0.4;
+  }
+  .spare-block.empty:hover {
+    border-color: transparent;
+    background: var(--bg);
+  }
+  .spare-icon {
+    width: 18px; height: 18px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+  .spare-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+  .spare-label {
+    font-size: 9px;
+    color: var(--text-mute);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+  }
+  .spare-url {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .spare-empty {
+    color: var(--text-mute);
+    font-style: italic;
+    font-size: 10px;
+  }
 
   .links { display: flex; flex-direction: column; gap: 6px; }
   .link {
@@ -893,13 +1014,13 @@ const COLUMN_POSITIONS = [
   "close",      // 10 Close
   "note",       // 11 NOTE
   "tg_link",    // 12 LINK SUPPORT GROUP
-  "svc_status", // 13 (originally labelled Service but contains on/off)
-  "service",    // 14 (originally labelled FRONT_END but contains service codes like MEGAC4)
-  "frontend",   // 15 (originally labelled BACK_END but actually frontend URL like megaplay888-v1.com)
-  "backend",    // 16 (originally labelled สำรอง 1 but actually backend like gtxr.megaplay888-v1.com)
-  "spare1",     // 17 (originally สำรอง 2 → actually spare1 like pocgetx888.app)
-  "spare2",     // 18 (originally Hydra → actually spare2)
-  "hydra_url",  // 19 (originally HYDRA → actually hydra URL)
+  "service",    // 13  Service (MEGAC4, ULTRAC4)
+  "frontend",   // 14 FRONT_END (megaplay888-v1.com)
+  "backend",    // 15 BACK_END (gtxr.megaplay888-v1.com)
+  "spare1",     // 16 สำรอง 1
+  "spare2",     // 17 สำรอง 2
+  "hydra_url",  // 18 link_Hydra (URL)
+  "hydra_note", // 19 HYDRA (date label)
 ];
 
 let data = [];
@@ -1107,6 +1228,34 @@ function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   })[c]);
+}
+
+// Copy text to clipboard and briefly flash the button green to confirm.
+// Used by Senior/Master/spare-domain copy buttons.
+async function copyToClipboard(text, btn) {
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (e) {
+    // Fallback for non-secure contexts
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch {}
+    document.body.removeChild(ta);
+  }
+  if (btn) {
+    btn.classList.add('copied');
+    const original = btn.innerHTML;
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>';
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.innerHTML = original;
+    }, 1200);
+  }
+  showToast('คัดลอกแล้ว: ' + text);
 }
 
 function findDuplicates() {
@@ -1398,7 +1547,12 @@ function renderWebsites() {
     const beURL = safeURL(d.backend);
     const hydraURL = safeURL(d.hydra_url);
     const tgURL = safeURL(d.tg_link);
+    const spare1URL = safeURL(d.spare1);
+    const spare2URL = safeURL(d.spare2);
     const isDup = dups.has(d.id);
+
+    // Reusable copy-button SVG (clipboard icon)
+    const copyIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
     let linksHTML = '';
     if (feURL) linksHTML += `<a href="${escapeHtml(feURL)}" target="_blank" rel="noopener" class="link link-web" onclick="event.stopPropagation()">
@@ -1409,10 +1563,13 @@ function renderWebsites() {
       <span class="link-icon"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg></span>
       <span class="link-content"><span class="link-label">ทางเข้า Office</span><span class="link-url">${escapeHtml(displayURL(beURL))}</span></span>
       <span class="link-arrow">↗</span></a>`;
+    // Hydra: show hydra_note as the visible label, but link to hydra_url.
+    // Fallback chain: clickable if URL present (with note text); text-only if only note exists.
     if (hydraURL) {
+      const hydraLabel = d.hydra_note || displayURL(hydraURL);
       linksHTML += `<a href="${escapeHtml(hydraURL)}" target="_blank" rel="noopener" class="link link-hydra" onclick="event.stopPropagation()">
         <span class="link-icon">⚡</span>
-        <span class="link-content"><span class="link-label">Hydra</span><span class="link-url">${escapeHtml(d.hydra_note || displayURL(hydraURL))}</span></span>
+        <span class="link-content"><span class="link-label">Hydra</span><span class="link-url">${escapeHtml(hydraLabel)}</span></span>
         <span class="link-arrow">↗</span></a>`;
     } else if (d.hydra_note) {
       linksHTML += `<div class="link link-hydra non-clickable">
@@ -1424,19 +1581,65 @@ function renderWebsites() {
       <span class="link-content"><span class="link-label">Telegram Support</span><span class="link-url">${escapeHtml(displayURL(tgURL))}</span></span>
       <span class="link-arrow">↗</span></a>`;
 
+    // Spare domains: render as 2 blocks side-by-side, regardless of whether either is filled.
+    // Each block has its own copy button. Empty side just shows a placeholder.
+    function spareBlock(label, value) {
+      if (!value) {
+        return `<div class="spare-block empty">
+          <span class="spare-icon">⊘</span>
+          <span class="spare-content">
+            <span class="spare-label">${label}</span>
+            <span class="spare-empty">—</span>
+          </span>
+        </div>`;
+      }
+      return `<div class="spare-block">
+        <span class="spare-icon">
+          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+        </span>
+        <span class="spare-content">
+          <span class="spare-label">${label}</span>
+          <span class="spare-url">${escapeHtml(value)}</span>
+        </span>
+        <button class="copy-btn" onclick="event.stopPropagation(); copyToClipboard(${JSON.stringify(value).replace(/"/g,'&quot;')}, this)" title="คัดลอก ${label}">${copyIcon}</button>
+      </div>`;
+    }
+    const spareHTML = `<div class="spare-row">${spareBlock('สำรอง 1', d.spare1)}${spareBlock('สำรอง 2', d.spare2)}</div>`;
+
+    // Sale chip — only show if there's a sale name
+    const saleChipHTML = d.sale ? `<span class="sale-chip" title="Sale: ${escapeHtml(d.sale)}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+      ${escapeHtml(d.sale)}
+    </span>` : '';
+
     return `<div class="card ${isDup?'card-duplicate':''}">
       ${isDup ? '<span class="dup-tag">ซ้ำ</span>' : ''}
       <div class="card-head">
         <div class="card-name">${escapeHtml(d.service || d.agent || d.web || '(ไม่มีชื่อ)')}</div>
-        <span class="badge badge-${statusKey}">${escapeHtml(d.status || '—')}</span>
+        <div class="head-meta">
+          ${saleChipHTML}
+          <span class="badge badge-${statusKey}">${escapeHtml(d.status || '—')}</span>
+        </div>
       </div>
       <div class="role-row">
-        <div class="role"><span class="role-label">Senior</span><span class="role-value">${escapeHtml(seniorShort)}</span></div>
+        <div class="role">
+          <span class="role-label">Senior</span>
+          <div class="role-value-row">
+            <span class="role-value">${escapeHtml(seniorShort)}</span>
+            ${seniorShort !== '—' ? `<button class="copy-btn" onclick="event.stopPropagation(); copyToClipboard(${JSON.stringify(seniorShort).replace(/"/g,'&quot;')}, this)" title="คัดลอก Senior">${copyIcon}</button>` : ''}
+          </div>
+        </div>
         <div class="role-divider"></div>
-        <div class="role"><span class="role-label">Master</span><span class="role-value">${escapeHtml(masterShort)}</span></div>
+        <div class="role">
+          <span class="role-label">Master</span>
+          <div class="role-value-row">
+            <span class="role-value">${escapeHtml(masterShort)}</span>
+            ${masterShort !== '—' ? `<button class="copy-btn" onclick="event.stopPropagation(); copyToClipboard(${JSON.stringify(masterShort).replace(/"/g,'&quot;')}, this)" title="คัดลอก Master">${copyIcon}</button>` : ''}
+          </div>
+        </div>
       </div>
       <div class="links">${linksHTML}</div>
-      
+      ${spareHTML}
     </div>`;
   }).join('');
 
