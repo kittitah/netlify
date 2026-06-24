@@ -876,30 +876,31 @@
 const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRww1G-t6zqRlaqYPLAf0dv8ld-JzJkpadutf39qf-D2a2Dvt_pTmF-GFk3gGZj09Mbju2hlJQOY33f/pub?output=csv";
 const SHEET_EDIT_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRww1G-t6zqRlaqYPLAf0dv8ld-JzJkpadutf39qf-D2a2Dvt_pTmF-GFk3gGZj09Mbju2hlJQOY33f/pub";
 
-// Column mapping from sheet headers to internal fields.
-// If the sheet's header text changes, update the keys on the left.
-const COLUMN_MAP = {
-  "Senior %": "senior",
-  "Master %": "master",
-  "Agent": "agent",
-  "WEB: 1,843": "web",         // header may rotate as new rows added (e.g. "WEB: 1,851")
-  "THEME": "theme",
-  "WL": "wl",
-  "TEAM": "team",
-  "SALE": "sale",
-  "Status": "status",
-  "Run": "run",
-  "Close": "close",
-  "NOTE": "note",
-  "LINK SUPPORT GROUP": "tg_link",
-  "Service": "service",
-  "FRONT_END": "frontend",
-  "BACK_END": "backend",
-  "สำรอง  1": "spare1",
-  "สำรอง  2": "spare2",
-  "Hydra": "hydra_url",
-  "HYDRA": "hydra_note",
-};
+// Column mapping by POSITION (0-indexed). Used because sheet has
+// header/data alignment issues — using header names lookup misses values.
+// Order must match the actual column order in the published sheet.
+const COLUMN_POSITIONS = [
+  "senior",     // 0  Senior %
+  "master",     // 1  Master %
+  "agent",      // 2  Agent
+  "web",        // 3  WEB: ...
+  "theme",      // 4  THEME
+  "wl",         // 5  WL
+  "team",       // 6  TEAM
+  "sale",       // 7  SALE
+  "status",     // 8  Status
+  "run",        // 9  Run
+  "close",      // 10 Close
+  "note",       // 11 NOTE
+  "tg_link",    // 12 LINK SUPPORT GROUP
+  "svc_status", // 13 (originally labelled Service but contains on/off)
+  "service",    // 14 (originally labelled FRONT_END but contains service codes like MEGAC4)
+  "frontend",   // 15 (originally labelled BACK_END but actually frontend URL like megaplay888-v1.com)
+  "backend",    // 16 (originally labelled สำรอง 1 but actually backend like gtxr.megaplay888-v1.com)
+  "spare1",     // 17 (originally สำรอง 2 → actually spare1 like pocgetx888.app)
+  "spare2",     // 18 (originally Hydra → actually spare2)
+  "hydra_url",  // 19 (originally HYDRA → actually hydra URL)
+];
 
 let data = [];
 
@@ -932,20 +933,14 @@ function parseCSV(text) {
 // Convert parsed rows to records keyed by the internal field name.
 function rowsToRecords(rows) {
   if (rows.length === 0) return [];
-  const header = rows[0];
   const records = [];
-  // Find the "WEB: ..." column by prefix since the number rotates.
-  const webIdx = header.findIndex(h => /^WEB:/i.test((h||"").trim()));
   for (let r = 1; r < rows.length; r++) {
     const cells = rows[r];
     // Skip empty rows
     if (!cells.some(c => (c||"").trim())) continue;
     const rec = { id: r };
-    for (let c = 0; c < header.length; c++) {
-      const headerName = (header[c]||"").trim();
-      let field = COLUMN_MAP[headerName];
-      // Fallback: use WEB column even if its label rotated
-      if (!field && c === webIdx) field = "web";
+    for (let c = 0; c < COLUMN_POSITIONS.length; c++) {
+      const field = COLUMN_POSITIONS[c];
       if (!field) continue;
       rec[field] = (cells[c]||"").trim();
     }
@@ -957,7 +952,7 @@ function rowsToRecords(rows) {
     rec.deposit = rec.deposit || "";
     rec.inout = rec.inout || "";
     rec.bot = rec.bot || "";
-    rec.svc_status = rec.svc_status || "";
+    rec.hydra_note = rec.hydra_note || "";
     rec.lotto = rec.lotto || "";
     rec.landing = rec.landing || "";
     rec.payment_monthly = rec.payment_monthly || "";
@@ -1378,7 +1373,7 @@ function renderWebsites() {
   let list = data.filter(d => {
     if (showDupOnly && !dups.has(d.id)) return false;
     if (search) {
-      const hay = `${d.web} ${d.agent} ${d.subagent} ${d.theme} ${d.note} ${d.service}`.toLowerCase();
+      const hay = `${d.web} ${d.agent} ${d.subagent} ${d.theme} ${d.note} ${d.service} ${d.senior} ${d.master}`.toLowerCase();
       if (!hay.includes(search)) return false;
     }
     if (fStatus && (d.status||'').toLowerCase() !== fStatus) return false;
@@ -1432,7 +1427,7 @@ function renderWebsites() {
     return `<div class="card ${isDup?'card-duplicate':''}">
       ${isDup ? '<span class="dup-tag">ซ้ำ</span>' : ''}
       <div class="card-head">
-        <div class="card-name">${escapeHtml(d.web || '(ไม่มีชื่อเว็บ)')}</div>
+        <div class="card-name">${escapeHtml(d.service || d.agent || d.web || '(ไม่มีชื่อ)')}</div>
         <span class="badge badge-${statusKey}">${escapeHtml(d.status || '—')}</span>
       </div>
       <div class="role-row">
