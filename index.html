@@ -427,10 +427,80 @@
     display: flex; justify-content: space-between;
     align-items: flex-start; gap: 10px; margin-bottom: 14px;
   }
+  /* Theme tag — small highlight at top-left of card */
+  .theme-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 3px 7px;
+    border-radius: 3px;
+    background: var(--accent);
+    color: #0f1115;
+    font-family: 'JetBrains Mono', monospace;
+    margin-bottom: 8px;
+    white-space: nowrap;
+  }
+  .card-title-wrap {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+  }
+  .card-name-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    min-width: 0;
+  }
   .card-name {
     font-size: 15px; font-weight: 600; color: var(--text);
     word-break: break-all; line-height: 1.35;
     font-family: 'JetBrains Mono', monospace; letter-spacing: -0.01em;
+    flex: 1;
+    min-width: 0;
+  }
+  .card-name .copy-btn {
+    opacity: 0.5;
+  }
+  .card-name-row:hover .copy-btn {
+    opacity: 1;
+  }
+
+  /* Date filter on Websites page (compact version) */
+  .ws-date-filter {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: 12px;
+  }
+  .ws-date-filter-label {
+    color: var(--text-dim);
+    font-weight: 600;
+    letter-spacing: 0.03em;
+  }
+  .ws-date-filter-label strong {
+    color: var(--accent);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .ws-date-filter .date-input-group {
+    padding: 0 4px 0 10px;
+  }
+  .ws-date-filter input[type="date"] {
+    width: 130px;
+    font-size: 11px;
   }
   .empty-agent { color: var(--text-mute); font-style: italic; font-weight: 400; }
   .badge {
@@ -977,6 +1047,32 @@
         </select>
       </div>
 
+      <div class="ws-date-filter" id="ws-date-filter">
+        <div class="ws-date-filter-label">
+          กรองช่วงวัน <strong id="ws-date-field-label">Run</strong>:
+        </div>
+        <div class="date-input-group">
+          <span>จาก</span>
+          <input type="date" id="ws-date-from" onchange="onWsDateChange()">
+          <button class="date-clear-inline" id="ws-clear-from" onclick="clearOneWsDate('from')" title="ล้างวันเริ่มต้น">✕</button>
+        </div>
+        <div class="date-input-group">
+          <span>ถึง</span>
+          <input type="date" id="ws-date-to" onchange="onWsDateChange()">
+          <button class="date-clear-inline" id="ws-clear-to" onclick="clearOneWsDate('to')" title="ล้างวันสิ้นสุด">✕</button>
+        </div>
+        <div class="quick-range">
+          <button class="quick-btn" data-range="thisMonth" onclick="applyWsQuickRange('thisMonth')">เดือนนี้</button>
+          <button class="quick-btn" data-range="lastMonth" onclick="applyWsQuickRange('lastMonth')">เดือนที่แล้ว</button>
+          <button class="quick-btn" data-range="last3Months" onclick="applyWsQuickRange('last3Months')">3 เดือน</button>
+          <button class="quick-btn" data-range="thisYear" onclick="applyWsQuickRange('thisYear')">ปีนี้</button>
+        </div>
+        <button class="date-clear" id="ws-date-clear" onclick="clearWsDateRange()" disabled>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          ล้างทั้งหมด
+        </button>
+      </div>
+
       <div class="cards" id="cards"></div>
       <div id="empty" class="empty-state" style="display:none;">
         <div class="empty-icon">∅</div>
@@ -1404,6 +1500,119 @@ function inDateRange(record) {
   return true;
 }
 
+// ===== Websites page date range filter =====
+// Separate state from Dashboard. Uses the status filter to decide which
+// date field to compare against (Run -> run, closed -> close, '' -> any).
+let wsDateRange = { from: null, to: null };
+
+function getWsDateField() {
+  // Map status filter value to the date field on each record
+  const status = (document.getElementById('filter-status').value || '').toLowerCase();
+  if (status === 'run') return 'run';
+  if (status === 'closed') return 'close';
+  if (status === 'open') return 'open';  // sheet has no open date column — handled below
+  return null;  // "ทุกสถานะ": match any date field
+}
+
+function updateWsDateFieldLabel() {
+  const status = document.getElementById('filter-status').value;
+  let label = 'Run / Close (ทุกสถานะ)';
+  if (status === 'Run') label = 'Run';
+  else if (status === 'closed') label = 'Close';
+  else if (status === 'open') label = 'Open';
+  document.getElementById('ws-date-field-label').textContent = label;
+}
+
+function inWsDateRange(record) {
+  if (!wsDateRange.from && !wsDateRange.to) return true;
+  const field = getWsDateField();
+  // Status "open" has no date column — when range is set, filter out all rows
+  if (field === 'open') return false;
+
+  // Decide which date(s) to check
+  const fromDate = wsDateRange.from ? parseISODate(wsDateRange.from) : null;
+  const toDate = wsDateRange.to ? parseISODate(wsDateRange.to) : null;
+  if (toDate) toDate.setHours(23, 59, 59, 999);
+
+  function dateInRange(d) {
+    if (!d) return false;
+    if (fromDate && d < fromDate) return false;
+    if (toDate && d > toDate) return false;
+    return true;
+  }
+
+  if (field === null) {
+    // ทุกสถานะ — record passes if EITHER run or close falls in range
+    return dateInRange(parseRunDate(record.run)) || dateInRange(parseRunDate(record.close));
+  }
+  // Specific field (run or close)
+  return dateInRange(parseRunDate(record[field]));
+}
+
+function onWsDateChange() {
+  wsDateRange.from = document.getElementById('ws-date-from').value || null;
+  wsDateRange.to = document.getElementById('ws-date-to').value || null;
+  document.querySelectorAll('#ws-date-filter .quick-btn').forEach(b => b.classList.remove('active'));
+  updateWsDateClearState();
+  render();
+}
+
+function applyWsQuickRange(key) {
+  const now = new Date();
+  let from, to;
+  if (key === 'thisMonth') {
+    from = new Date(now.getFullYear(), now.getMonth(), 1);
+    to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  } else if (key === 'lastMonth') {
+    from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    to = new Date(now.getFullYear(), now.getMonth(), 0);
+  } else if (key === 'last3Months') {
+    from = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+    to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  } else if (key === 'thisYear') {
+    from = new Date(now.getFullYear(), 0, 1);
+    to = new Date(now.getFullYear(), 11, 31);
+  }
+  wsDateRange.from = isoString(from);
+  wsDateRange.to = isoString(to);
+  document.getElementById('ws-date-from').value = wsDateRange.from;
+  document.getElementById('ws-date-to').value = wsDateRange.to;
+  document.querySelectorAll('#ws-date-filter .quick-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.range === key);
+  });
+  updateWsDateClearState();
+  render();
+}
+
+function clearWsDateRange() {
+  wsDateRange.from = null;
+  wsDateRange.to = null;
+  document.getElementById('ws-date-from').value = '';
+  document.getElementById('ws-date-to').value = '';
+  document.querySelectorAll('#ws-date-filter .quick-btn').forEach(b => b.classList.remove('active'));
+  updateWsDateClearState();
+  render();
+}
+
+function clearOneWsDate(which) {
+  if (which === 'from') {
+    wsDateRange.from = null;
+    document.getElementById('ws-date-from').value = '';
+  } else {
+    wsDateRange.to = null;
+    document.getElementById('ws-date-to').value = '';
+  }
+  document.querySelectorAll('#ws-date-filter .quick-btn').forEach(b => b.classList.remove('active'));
+  updateWsDateClearState();
+  render();
+}
+
+function updateWsDateClearState() {
+  document.getElementById('ws-date-clear').disabled = !wsDateRange.from && !wsDateRange.to;
+  document.getElementById('ws-date-from').parentElement.classList.toggle('has-value', !!wsDateRange.from);
+  document.getElementById('ws-date-to').parentElement.classList.toggle('has-value', !!wsDateRange.to);
+}
+
 // ===== Theme color =====
 function themeColor(name) {
   const k = (name || '').toLowerCase();
@@ -1519,6 +1728,9 @@ function renderWebsites() {
   const fWL = document.getElementById('filter-wl').value;
   const dups = findDuplicates();
 
+  // Refresh the date filter label since status drives which date field it uses
+  updateWsDateFieldLabel();
+
   let list = data.filter(d => {
     if (showDupOnly && !dups.has(d.id)) return false;
     if (search) {
@@ -1528,6 +1740,7 @@ function renderWebsites() {
     if (fStatus && (d.status||'').toLowerCase() !== fStatus) return false;
     if (fTheme && (d.theme||'').toLowerCase() !== fTheme) return false;
     if (fWL && d.wl !== fWL) return false;
+    if (!inWsDateRange(d)) return false;
     return true;
   });
 
@@ -1543,28 +1756,28 @@ function renderWebsites() {
     const statusKey = (d.status||'').toLowerCase();
     const seniorShort = (d.senior||'').split(' ')[0] || '—';
     const masterShort = (d.master||'').split(' ')[0] || '—';
-    const feURL = safeURL(d.web);
+    // LINK WEB now uses FRONT_END column (was `web` before)
+    const feURL = safeURL(d.frontend) || safeURL(d.web);
     const beURL = safeURL(d.backend);
     const hydraURL = safeURL(d.hydra_url);
     const tgURL = safeURL(d.tg_link);
-    const spare1URL = safeURL(d.spare1);
-    const spare2URL = safeURL(d.spare2);
     const isDup = dups.has(d.id);
 
     // Reusable copy-button SVG (clipboard icon)
     const copyIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
+    const serviceName = d.service || d.agent || d.web || '(ไม่มีชื่อ)';
+
     let linksHTML = '';
     if (feURL) linksHTML += `<a href="${escapeHtml(feURL)}" target="_blank" rel="noopener" class="link link-web" onclick="event.stopPropagation()">
       <span class="link-icon"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-9c2.5 2.5 4 5.5 4 9s-1.5 6.5-4 9c-2.5-2.5-4-5.5-4-9s1.5-6.5 4-9zM3 12h18"/></svg></span>
-      <span class="link-content"><span class="link-label">ทางเข้าเว็บ</span><span class="link-url">${escapeHtml(displayURL(feURL))}</span></span>
+      <span class="link-content"><span class="link-label">LINK WEB</span><span class="link-url">${escapeHtml(displayURL(feURL))}</span></span>
       <span class="link-arrow">↗</span></a>`;
     if (beURL) linksHTML += `<a href="${escapeHtml(beURL)}" target="_blank" rel="noopener" class="link link-office" onclick="event.stopPropagation()">
       <span class="link-icon"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg></span>
-      <span class="link-content"><span class="link-label">ทางเข้า Office</span><span class="link-url">${escapeHtml(displayURL(beURL))}</span></span>
+      <span class="link-content"><span class="link-label">LINK OFFICE</span><span class="link-url">${escapeHtml(displayURL(beURL))}</span></span>
       <span class="link-arrow">↗</span></a>`;
     // Hydra: show hydra_note as the visible label, but link to hydra_url.
-    // Fallback chain: clickable if URL present (with note text); text-only if only note exists.
     if (hydraURL) {
       const hydraLabel = d.hydra_note || displayURL(hydraURL);
       linksHTML += `<a href="${escapeHtml(hydraURL)}" target="_blank" rel="noopener" class="link link-hydra" onclick="event.stopPropagation()">
@@ -1582,7 +1795,6 @@ function renderWebsites() {
       <span class="link-arrow">↗</span></a>`;
 
     // Spare domains: render as 2 blocks side-by-side, regardless of whether either is filled.
-    // Each block has its own copy button. Empty side just shows a placeholder.
     function spareBlock(label, value) {
       if (!value) {
         return `<div class="spare-block empty">
@@ -1612,10 +1824,19 @@ function renderWebsites() {
       ${escapeHtml(d.sale)}
     </span>` : '';
 
+    // Theme tag at top-left of card — single highlight color (accent yellow) regardless of theme
+    const themeTagHTML = d.theme ? `<span class="theme-tag">${escapeHtml(d.theme)}</span>` : '';
+
     return `<div class="card ${isDup?'card-duplicate':''}">
       ${isDup ? '<span class="dup-tag">ซ้ำ</span>' : ''}
       <div class="card-head">
-        <div class="card-name">${escapeHtml(d.service || d.agent || d.web || '(ไม่มีชื่อ)')}</div>
+        <div class="card-title-wrap">
+          ${themeTagHTML}
+          <div class="card-name-row">
+            <span class="card-name">${escapeHtml(serviceName)}</span>
+            <button class="copy-btn" onclick="event.stopPropagation(); copyToClipboard(${JSON.stringify(serviceName).replace(/"/g,'&quot;')}, this)" title="คัดลอกชื่อ Service">${copyIcon}</button>
+          </div>
+        </div>
         <div class="head-meta">
           ${saleChipHTML}
           <span class="badge badge-${statusKey}">${escapeHtml(d.status || '—')}</span>
