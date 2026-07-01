@@ -444,6 +444,24 @@
     white-space: nowrap;
     flex-shrink: 0;
   }
+
+  /* Server tag — outlined style so it reads differently from theme */
+  .server-tag {
+    display: inline-flex;
+    align-items: center;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 3px 7px;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--blue);
+    border: 1px solid var(--blue);
+    font-family: 'JetBrains Mono', monospace;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
   .card-title-wrap {
     flex: 1;
     min-width: 0;
@@ -782,13 +800,130 @@
     .stat-cards { grid-template-columns: repeat(2, 1fr); }
     .panels { grid-template-columns: 1fr; }
   }
+
+  /* Login overlay shown until user is authenticated via Netlify Identity */
+  .login-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+  }
+  .login-card {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 40px 36px;
+    width: 100%;
+    max-width: 420px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  }
+  .login-logo {
+    width: 48px;
+    height: 48px;
+    background: var(--accent);
+    border-radius: 8px;
+    transform: rotate(45deg);
+    margin: 0 auto 20px;
+  }
+  .login-title {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    letter-spacing: -0.02em;
+  }
+  .login-subtitle {
+    color: var(--text-dim);
+    font-size: 13px;
+    margin-bottom: 28px;
+    line-height: 1.55;
+  }
+  .login-btn {
+    background: var(--accent);
+    color: #0f1115;
+    border: none;
+    padding: 14px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 8px;
+    width: 100%;
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.15s;
+    font-family: inherit;
+  }
+  .login-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(255, 209, 102, 0.3);
+  }
+  .login-help {
+    margin-top: 16px;
+    font-size: 11px;
+    color: var(--text-mute);
+    line-height: 1.5;
+  }
+
+  /* User chip in top-right */
+  .user-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text);
+  }
+  .user-chip-email {
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .user-chip-logout {
+    background: transparent;
+    border: none;
+    color: var(--text-mute);
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: inherit;
+  }
+  .user-chip-logout:hover {
+    color: var(--red);
+    background: var(--red-bg);
+  }
+
   @media (max-width: 900px) {
     .app { grid-template-columns: 1fr; }
   }
 </style>
+<!-- Netlify Identity widget — handles user login/signup/recovery -->
+<script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
 </head>
 <body>
-<div class="app">
+<!-- Login screen shown until user is authenticated -->
+<div class="login-overlay" id="login-overlay">
+  <div class="login-card">
+    <div class="login-logo"></div>
+    <div class="login-title">WebOps Dashboard</div>
+    <div class="login-subtitle">กรุณาเข้าสู่ระบบเพื่อใช้งาน<br>หากยังไม่ได้รับคำเชิญ ติดต่อผู้ดูแลระบบ</div>
+    <button class="login-btn" onclick="netlifyIdentity.open('login')">เข้าสู่ระบบ</button>
+    <div class="login-help">
+      สำหรับสมาชิกในทีมเท่านั้น · ใช้ email ที่ได้รับคำเชิญ
+    </div>
+  </div>
+</div>
+
+<div class="app" id="app" style="display:none;">
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="brand">
@@ -877,6 +1012,11 @@
         <div class="page-subtitle" id="page-subtitle">ภาพรวมข้อมูลทั้งระบบ</div>
       </div>
       <div class="head-actions">
+        <div class="user-chip" id="user-chip" style="display:none;">
+          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+          <span class="user-chip-email" id="user-chip-email">—</span>
+          <button class="user-chip-logout" onclick="netlifyIdentity.logout()" title="ออกจากระบบ">ออก</button>
+        </div>
         <button class="btn btn-ghost" onclick="loadFromSheet()" title="ดึงข้อมูลใหม่จาก Sheet" id="btn-refresh">
           <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
           Refresh
@@ -1089,26 +1229,27 @@ const SHEET_EDIT_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRww1G-t
 // header/data alignment issues — using header names lookup misses values.
 // Order must match the actual column order in the published sheet.
 const COLUMN_POSITIONS = [
-  "senior",     // 0  Senior %
-  "master",     // 1  Master %
-  "agent",      // 2  Agent
-  "web",        // 3  WEB: ...
-  "theme",      // 4  THEME
-  "wl",         // 5  WL
-  "team",       // 6  TEAM
-  "sale",       // 7  SALE
-  "status",     // 8  Status
-  "run",        // 9  Run
-  "close",      // 10 Close
-  "note",       // 11 NOTE
-  "tg_link",    // 12 LINK SUPPORT GROUP
-  "service",    // 13  Service (MEGAC4, ULTRAC4)
-  "frontend",   // 14 FRONT_END (megaplay888-v1.com)
-  "backend",    // 15 BACK_END (gtxr.megaplay888-v1.com)
-  "spare1",     // 16 สำรอง 1
-  "spare2",     // 17 สำรอง 2
-  "hydra_url",  // 18 link_Hydra (URL)
-  "hydra_note", // 19 HYDRA (date label)
+  "server",     // 0  server (aws, google, etc.)
+  "senior",     // 1  Senior %
+  "master",     // 2  Master %
+  "agent",      // 3  Agent
+  "web",        // 4  WEB: ...
+  "theme",      // 5  THEME
+  "wl",         // 6  WL
+  "team",       // 7  TEAM
+  "sale",       // 8  SALE
+  "status",     // 9  Status
+  "run",        // 10 Run
+  "close",      // 11 Close
+  "note",       // 12 NOTE
+  "tg_link",    // 13 LINK SUPPORT GROUP
+  "service",    // 14  Service (MEGAC4, ULTRAC4)
+  "frontend",   // 15 FRONT_END (megaplay888-v1.com)
+  "backend",    // 16 BACK_END (gtxr.megaplay888-v1.com)
+  "spare1",     // 17 สำรอง 1
+  "spare2",     // 18 สำรอง 2
+  "hydra_url",  // 19 link_Hydra (URL)
+  "hydra_note", // 20 HYDRA (date label)
 ];
 
 let data = [];
@@ -1820,6 +1961,7 @@ function renderWebsites() {
           <div class="card-name-row">
             ${themeTagHTML}
             <span class="card-name">${escapeHtml(serviceName)}</span>
+            ${d.server ? `<span class="server-tag" title="Server: ${escapeHtml(d.server)}">${escapeHtml(d.server)}</span>` : ''}
             <button class="copy-btn" onclick="event.stopPropagation(); copyToClipboard(${JSON.stringify(serviceName).replace(/"/g,'&quot;')}, this)" title="คัดลอกชื่อ Service">${copyIcon}</button>
           </div>
         </div>
@@ -2109,9 +2251,57 @@ function resetData() {
   showToast('คืนค่าเริ่มต้นเรียบร้อย', 'danger');
 }
 
-// Initial render shell, then load data from sheet
-setPage('dashboard');
-loadFromSheet();
+// ===== Netlify Identity auth gate =====
+// The app stays hidden behind a login overlay until the user is authenticated.
+// netlifyIdentity is the global from the widget script loaded in <head>.
+
+function showApp(user) {
+  // Reveal the dashboard and hide the login overlay
+  document.getElementById('login-overlay').style.display = 'none';
+  document.getElementById('app').style.display = '';
+  // Show user chip
+  document.getElementById('user-chip').style.display = '';
+  document.getElementById('user-chip-email').textContent =
+    user.user_metadata?.full_name || user.email;
+  // Bootstrap the dashboard (only on first reveal)
+  if (!window._appBooted) {
+    window._appBooted = true;
+    setPage('dashboard');
+    loadFromSheet();
+  }
+}
+
+function showLogin() {
+  document.getElementById('login-overlay').style.display = '';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('user-chip').style.display = 'none';
+}
+
+if (window.netlifyIdentity) {
+  netlifyIdentity.on('init', user => {
+    if (user) showApp(user);
+    else showLogin();
+  });
+  netlifyIdentity.on('login', user => {
+    showApp(user);
+    netlifyIdentity.close();  // close the widget modal
+  });
+  netlifyIdentity.on('logout', () => {
+    window._appBooted = false;
+    showLogin();
+  });
+  netlifyIdentity.on('error', err => {
+    console.error('Identity error:', err);
+  });
+} else {
+  // If the widget script failed to load (e.g. running locally without Netlify),
+  // fall through to show the app — useful for local development.
+  console.warn('Netlify Identity not available — running in unprotected mode');
+  document.getElementById('login-overlay').style.display = 'none';
+  document.getElementById('app').style.display = '';
+  setPage('dashboard');
+  loadFromSheet();
+}
 </script>
 </body>
 </html>
