@@ -906,24 +906,9 @@
     .app { grid-template-columns: 1fr; }
   }
 </style>
-<!-- Netlify Identity widget — handles user login/signup/recovery -->
-<script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
 </head>
 <body>
-<!-- Login screen shown until user is authenticated -->
-<div class="login-overlay" id="login-overlay">
-  <div class="login-card">
-    <div class="login-logo"></div>
-    <div class="login-title">WebOps Dashboard</div>
-    <div class="login-subtitle">กรุณาเข้าสู่ระบบเพื่อใช้งาน<br>หากยังไม่ได้รับคำเชิญ ติดต่อผู้ดูแลระบบ</div>
-    <button class="login-btn" onclick="netlifyIdentity.open('login')">เข้าสู่ระบบ</button>
-    <div class="login-help">
-      สำหรับสมาชิกในทีมเท่านั้น · ใช้ email ที่ได้รับคำเชิญ
-    </div>
-  </div>
-</div>
-
-<div class="app" id="app" style="display:none;">
+<div class="app">
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="brand">
@@ -1012,11 +997,6 @@
         <div class="page-subtitle" id="page-subtitle">ภาพรวมข้อมูลทั้งระบบ</div>
       </div>
       <div class="head-actions">
-        <div class="user-chip" id="user-chip" style="display:none;">
-          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-          <span class="user-chip-email" id="user-chip-email">—</span>
-          <button class="user-chip-logout" onclick="netlifyIdentity.logout()" title="ออกจากระบบ">ออก</button>
-        </div>
         <button class="btn btn-ghost" onclick="loadFromSheet()" title="ดึงข้อมูลใหม่จาก Sheet" id="btn-refresh">
           <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
           Refresh
@@ -2251,57 +2231,9 @@ function resetData() {
   showToast('คืนค่าเริ่มต้นเรียบร้อย', 'danger');
 }
 
-// ===== Netlify Identity auth gate =====
-// The app stays hidden behind a login overlay until the user is authenticated.
-// netlifyIdentity is the global from the widget script loaded in <head>.
-
-function showApp(user) {
-  // Reveal the dashboard and hide the login overlay
-  document.getElementById('login-overlay').style.display = 'none';
-  document.getElementById('app').style.display = '';
-  // Show user chip
-  document.getElementById('user-chip').style.display = '';
-  document.getElementById('user-chip-email').textContent =
-    user.user_metadata?.full_name || user.email;
-  // Bootstrap the dashboard (only on first reveal)
-  if (!window._appBooted) {
-    window._appBooted = true;
-    setPage('dashboard');
-    loadFromSheet();
-  }
-}
-
-function showLogin() {
-  document.getElementById('login-overlay').style.display = '';
-  document.getElementById('app').style.display = 'none';
-  document.getElementById('user-chip').style.display = 'none';
-}
-
-if (window.netlifyIdentity) {
-  netlifyIdentity.on('init', user => {
-    if (user) showApp(user);
-    else showLogin();
-  });
-  netlifyIdentity.on('login', user => {
-    showApp(user);
-    netlifyIdentity.close();  // close the widget modal
-  });
-  netlifyIdentity.on('logout', () => {
-    window._appBooted = false;
-    showLogin();
-  });
-  netlifyIdentity.on('error', err => {
-    console.error('Identity error:', err);
-  });
-} else {
-  // If the widget script failed to load (e.g. running locally without Netlify),
-  // fall through to show the app — useful for local development.
-  console.warn('Netlify Identity not available — running in unprotected mode');
-  document.getElementById('login-overlay').style.display = 'none';
-  document.getElementById('app').style.display = '';
-  setPage('dashboard');
-  loadFromSheet();
-}
+// Initial render shell, then load data from sheet
+setPage('dashboard');
+loadFromSheet();
 </script>
 </body>
 </html>
