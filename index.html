@@ -949,20 +949,43 @@
   <div class="login-card">
     <div class="login-logo"></div>
     <div class="login-title">WebOps Dashboard</div>
-    <div class="login-subtitle">กรุณาเข้าสู่ระบบเพื่อใช้งาน<br>หากยังไม่ได้รับคำเชิญ ติดต่อผู้ดูแลระบบ</div>
 
-    <!-- Custom login form using Netlify Identity's gotrue-js API directly.
-         We bypass the widget popup because it fails to render in some browsers -
-         calling gotrue.login() straight from a form is more reliable. -->
-    <form id="login-form" onsubmit="handleLogin(event); return false;">
-      <input type="email" id="login-email" placeholder="Email" required class="login-input" autocomplete="email">
-      <input type="password" id="login-password" placeholder="รหัสผ่าน" required class="login-input" autocomplete="current-password">
-      <button type="submit" class="login-btn" id="login-submit">เข้าสู่ระบบ</button>
-      <div class="login-error" id="login-error"></div>
-    </form>
+    <!-- Normal login form: shown by default -->
+    <div id="login-section">
+      <div class="login-subtitle">กรุณาเข้าสู่ระบบเพื่อใช้งาน<br>หากยังไม่ได้รับคำเชิญ ติดต่อผู้ดูแลระบบ</div>
+      <form id="login-form" onsubmit="handleLogin(event); return false;">
+        <input type="email" id="login-email" placeholder="Email" required class="login-input" autocomplete="email">
+        <input type="password" id="login-password" placeholder="รหัสผ่าน" required class="login-input" autocomplete="current-password">
+        <button type="submit" class="login-btn" id="login-submit">เข้าสู่ระบบ</button>
+        <div class="login-error" id="login-error"></div>
+      </form>
+      <div class="login-help">
+        สำหรับสมาชิกในทีมเท่านั้น · ใช้ email ที่ได้รับคำเชิญ
+      </div>
+    </div>
 
-    <div class="login-help">
-      สำหรับสมาชิกในทีมเท่านั้น · ใช้ email ที่ได้รับคำเชิญ
+    <!-- Invite acceptance form: shown when URL has #invite_token=...
+         User arrives here from the "Accept the invite" link in the invitation email. -->
+    <div id="invite-section" style="display:none;">
+      <div class="login-subtitle">ยินดีต้อนรับ! กรุณาตั้งรหัสผ่านสำหรับบัญชีของคุณ</div>
+      <form id="invite-form" onsubmit="handleAcceptInvite(event); return false;">
+        <input type="password" id="invite-password" placeholder="ตั้งรหัสผ่าน (อย่างน้อย 6 ตัวอักษร)" required minlength="6" class="login-input" autocomplete="new-password">
+        <input type="password" id="invite-password2" placeholder="ยืนยันรหัสผ่านอีกครั้ง" required minlength="6" class="login-input" autocomplete="new-password">
+        <button type="submit" class="login-btn" id="invite-submit">ตั้งรหัสผ่าน และเข้าสู่ระบบ</button>
+        <div class="login-error" id="invite-error"></div>
+      </form>
+    </div>
+
+    <!-- Password recovery form: shown when URL has #recovery_token=...
+         User arrives here from the "Reset your password" link in the recovery email. -->
+    <div id="recovery-section" style="display:none;">
+      <div class="login-subtitle">ตั้งรหัสผ่านใหม่</div>
+      <form id="recovery-form" onsubmit="handlePasswordRecovery(event); return false;">
+        <input type="password" id="recovery-password" placeholder="รหัสผ่านใหม่ (อย่างน้อย 6 ตัวอักษร)" required minlength="6" class="login-input" autocomplete="new-password">
+        <input type="password" id="recovery-password2" placeholder="ยืนยันรหัสผ่านใหม่" required minlength="6" class="login-input" autocomplete="new-password">
+        <button type="submit" class="login-btn" id="recovery-submit">อัพเดตรหัสผ่าน</button>
+        <div class="login-error" id="recovery-error"></div>
+      </form>
     </div>
   </div>
 </div>
@@ -2367,6 +2390,8 @@ function showLogin() {
   document.getElementById('app').style.display = 'none';
   document.getElementById('user-chip').style.display = 'none';
   if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+  // Detect invite/recovery tokens in URL and swap the visible form accordingly
+  checkAuthTokens();
 }
 
 // Handles the custom login form submission.
@@ -2411,6 +2436,133 @@ async function handleLogin(event) {
   } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = 'เข้าสู่ระบบ';
+  }
+}
+
+// ===== Invite / Password Recovery token handling =====
+// When a user clicks "Accept the invite" from the invitation email, they land here
+// with `#invite_token=xxx` in the URL. Same for password reset: `#recovery_token=xxx`.
+// We detect these tokens and show the appropriate form instead of the login form.
+
+// Reads a token from the URL hash (#invite_token=xxx or #recovery_token=xxx)
+function getTokenFromHash(name) {
+  if (!location.hash) return null;
+  const params = new URLSearchParams(location.hash.slice(1));
+  return params.get(name);
+}
+
+// Show the correct form based on URL hash. Called on page load.
+function checkAuthTokens() {
+  const inviteToken = getTokenFromHash('invite_token');
+  const recoveryToken = getTokenFromHash('recovery_token');
+
+  if (inviteToken) {
+    // User accepting an invitation — show "set password" form
+    document.getElementById('login-section').style.display = 'none';
+    document.getElementById('invite-section').style.display = '';
+    document.getElementById('recovery-section').style.display = 'none';
+    return true;
+  }
+  if (recoveryToken) {
+    // User resetting password — show "new password" form
+    document.getElementById('login-section').style.display = 'none';
+    document.getElementById('invite-section').style.display = 'none';
+    document.getElementById('recovery-section').style.display = '';
+    return true;
+  }
+  // No token — normal login flow
+  return false;
+}
+
+// Called when user submits the "set password" form after accepting an invite.
+async function handleAcceptInvite(event) {
+  event.preventDefault();
+  const pw1 = document.getElementById('invite-password').value;
+  const pw2 = document.getElementById('invite-password2').value;
+  const submitBtn = document.getElementById('invite-submit');
+  const errorEl = document.getElementById('invite-error');
+  errorEl.textContent = '';
+
+  if (pw1 !== pw2) {
+    errorEl.textContent = 'รหัสผ่านทั้งสองไม่ตรงกัน';
+    return;
+  }
+  if (pw1.length < 6) {
+    errorEl.textContent = 'รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร';
+    return;
+  }
+
+  const token = getTokenFromHash('invite_token');
+  if (!token) {
+    errorEl.textContent = 'ไม่พบ invite token — กรุณาคลิกลิงค์จากอีเมลใหม่อีกครั้ง';
+    return;
+  }
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'กำลังตั้งรหัสผ่าน...';
+
+  try {
+    // acceptInvite(token, password, remember) — creates the account and logs in
+    const user = await netlifyIdentity.gotrue.acceptInvite(token, pw1, true);
+    // Clear the token from the URL so refresh doesn't re-trigger this
+    history.replaceState(null, '', location.pathname);
+    showApp(user);
+  } catch (err) {
+    console.error('Accept invite failed:', err);
+    let msg = 'ตั้งรหัสผ่านไม่สำเร็จ';
+    if (err.json?.error_description) msg = err.json.error_description;
+    else if (err.message) msg = err.message;
+    if (/token.*expired|invalid.*token/i.test(msg)) {
+      msg = 'ลิงค์คำเชิญหมดอายุหรือไม่ถูกต้อง — ติดต่อผู้ดูแลระบบ';
+    }
+    errorEl.textContent = msg;
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'ตั้งรหัสผ่าน และเข้าสู่ระบบ';
+  }
+}
+
+// Called when user submits the "new password" form via a password recovery link.
+async function handlePasswordRecovery(event) {
+  event.preventDefault();
+  const pw1 = document.getElementById('recovery-password').value;
+  const pw2 = document.getElementById('recovery-password2').value;
+  const submitBtn = document.getElementById('recovery-submit');
+  const errorEl = document.getElementById('recovery-error');
+  errorEl.textContent = '';
+
+  if (pw1 !== pw2) {
+    errorEl.textContent = 'รหัสผ่านทั้งสองไม่ตรงกัน';
+    return;
+  }
+  if (pw1.length < 6) {
+    errorEl.textContent = 'รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร';
+    return;
+  }
+
+  const token = getTokenFromHash('recovery_token');
+  if (!token) {
+    errorEl.textContent = 'ไม่พบ recovery token';
+    return;
+  }
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'กำลังอัพเดต...';
+
+  try {
+    // recover(token) verifies the token and returns a user session,
+    // then update() sets the new password on that user.
+    const user = await netlifyIdentity.gotrue.recover(token, true);
+    await user.update({ password: pw1 });
+    history.replaceState(null, '', location.pathname);
+    showApp(user);
+  } catch (err) {
+    console.error('Password recovery failed:', err);
+    let msg = 'อัพเดตรหัสผ่านไม่สำเร็จ';
+    if (err.json?.error_description) msg = err.json.error_description;
+    else if (err.message) msg = err.message;
+    errorEl.textContent = msg;
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'อัพเดตรหัสผ่าน';
   }
 }
 
