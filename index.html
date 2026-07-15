@@ -940,6 +940,23 @@
     .app { grid-template-columns: 1fr; }
   }
 </style>
+<!-- Capture invite/recovery tokens IMMEDIATELY, before the Netlify Identity widget
+     script loads below. The widget can consume and strip the token from the URL
+     during its own init, so we snapshot it here first and stash it on window. -->
+<script>
+  (function captureAuthTokens() {
+    // Tokens can appear in either the hash (#invite_token=...) or query (?invite_token=...)
+    function readToken(source, name) {
+      if (!source) return null;
+      const params = new URLSearchParams(source.replace(/^[#?]/, ''));
+      return params.get(name);
+    }
+    window.__authTokens = {
+      invite:   readToken(location.hash, 'invite_token')   || readToken(location.search, 'invite_token'),
+      recovery: readToken(location.hash, 'recovery_token') || readToken(location.search, 'recovery_token'),
+    };
+  })();
+</script>
 <!-- Netlify Identity widget — handles user login/signup/recovery -->
 <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
 </head>
@@ -2444,14 +2461,22 @@ async function handleLogin(event) {
 // with `#invite_token=xxx` in the URL. Same for password reset: `#recovery_token=xxx`.
 // We detect these tokens and show the appropriate form instead of the login form.
 
-// Reads a token from the URL hash (#invite_token=xxx or #recovery_token=xxx)
+// Reads a token captured at page load (see the early script in <head>).
+// We can't read from the URL here because the Netlify widget may have already
+// stripped it — so we rely on the snapshot taken before the widget loaded.
 function getTokenFromHash(name) {
-  if (!location.hash) return null;
-  const params = new URLSearchParams(location.hash.slice(1));
-  return params.get(name);
+  const tokens = window.__authTokens || {};
+  if (name === 'invite_token') return tokens.invite || null;
+  if (name === 'recovery_token') return tokens.recovery || null;
+  // Fallback: try reading live URL just in case
+  if (location.hash) {
+    const params = new URLSearchParams(location.hash.slice(1));
+    return params.get(name);
+  }
+  return null;
 }
 
-// Show the correct form based on URL hash. Called on page load.
+// Show the correct form based on captured tokens. Called on page load.
 function checkAuthTokens() {
   const inviteToken = getTokenFromHash('invite_token');
   const recoveryToken = getTokenFromHash('recovery_token');
@@ -2471,6 +2496,9 @@ function checkAuthTokens() {
     return true;
   }
   // No token — normal login flow
+  document.getElementById('login-section').style.display = '';
+  document.getElementById('invite-section').style.display = 'none';
+  document.getElementById('recovery-section').style.display = 'none';
   return false;
 }
 
@@ -2504,7 +2532,8 @@ async function handleAcceptInvite(event) {
   try {
     // acceptInvite(token, password, remember) — creates the account and logs in
     const user = await netlifyIdentity.gotrue.acceptInvite(token, pw1, true);
-    // Clear the token from the URL so refresh doesn't re-trigger this
+    // Clear the token from the URL and snapshot so refresh doesn't re-trigger this
+    if (window.__authTokens) window.__authTokens.invite = null;
     history.replaceState(null, '', location.pathname);
     showApp(user);
   } catch (err) {
@@ -2553,6 +2582,7 @@ async function handlePasswordRecovery(event) {
     // then update() sets the new password on that user.
     const user = await netlifyIdentity.gotrue.recover(token, true);
     await user.update({ password: pw1 });
+    if (window.__authTokens) window.__authTokens.recovery = null;
     history.replaceState(null, '', location.pathname);
     showApp(user);
   } catch (err) {
@@ -2567,7 +2597,21 @@ async function handlePasswordRecovery(event) {
 }
 
 if (window.netlifyIdentity) {
+  // If the user arrived via an invite/recovery link, show the right form immediately.
+  // Don't wait for the widget's init event — it can be slow, and we already
+  // captured the token in <head> before the widget could strip it.
+  const hasAuthToken = (window.__authTokens &&
+    (window.__authTokens.invite || window.__authTokens.recovery));
+  if (hasAuthToken) {
+    // Reveal the overlay and swap to the invite/recovery form right away
+    document.getElementById('login-overlay').style.display = '';
+    document.getElementById('app').style.display = 'none';
+    checkAuthTokens();
+  }
+
   netlifyIdentity.on('init', user => {
+    // If we're in the middle of an invite/recovery flow, don't override the form
+    if (hasAuthToken && !user) return;
     if (user) showApp(user);
     else showLogin();
   });
