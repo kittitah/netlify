@@ -955,6 +955,20 @@
       invite:   readToken(location.hash, 'invite_token')   || readToken(location.search, 'invite_token'),
       recovery: readToken(location.hash, 'recovery_token') || readToken(location.search, 'recovery_token'),
     };
+    // Strip the token from the URL right now. If it's left in the URL, the
+    // Netlify Identity widget will auto-open its own full-screen modal on init,
+    // and that modal sits on top of the dashboard capturing every click — which
+    // is why the page felt "frozen" after setting a password until a refresh.
+    // We already have the token in window.__authTokens, so removing it is safe.
+    if (window.__authTokens.invite || window.__authTokens.recovery) {
+      try {
+        var u = new URL(location.href);
+        u.searchParams.delete('invite_token');
+        u.searchParams.delete('recovery_token');
+        u.hash = '';
+        history.replaceState(null, '', u.pathname + u.search);
+      } catch (e) { /* older browser — ignore */ }
+    }
   })();
 </script>
 <!-- Netlify Identity widget — handles user login/signup/recovery -->
@@ -2388,6 +2402,13 @@ function startIdleTracking() {
 }
 
 function showApp(user) {
+  // Safety net: make sure the Netlify Identity widget's own modal is closed and
+  // hidden. If it ever opened (e.g. from an invite link), its overlay would sit
+  // on top of the dashboard and block all clicks until a manual refresh.
+  try { if (window.netlifyIdentity) netlifyIdentity.close(); } catch (e) {}
+  var _widget = document.getElementById('netlify-identity-widget');
+  if (_widget) _widget.style.display = 'none';
+
   document.getElementById('login-overlay').style.display = 'none';
   document.getElementById('app').style.display = '';
   document.getElementById('user-chip').style.display = '';
