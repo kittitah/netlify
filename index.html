@@ -842,6 +842,26 @@
     margin-bottom: 28px;
     line-height: 1.55;
   }
+  .login-input {
+    width: 100%;
+    padding: 12px 14px;
+    font-size: 14px;
+    font-family: inherit;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    margin-bottom: 10px;
+    box-sizing: border-box;
+    transition: border-color 0.15s;
+  }
+  .login-input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .login-input::placeholder {
+    color: var(--text-mute);
+  }
   .login-btn {
     background: var(--accent);
     color: #0f1115;
@@ -854,10 +874,24 @@
     cursor: pointer;
     transition: transform 0.1s, box-shadow 0.15s;
     font-family: inherit;
+    margin-top: 6px;
   }
   .login-btn:hover {
     transform: translateY(-1px);
     box-shadow: 0 8px 20px rgba(255, 209, 102, 0.3);
+  }
+  .login-btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+    transform: none;
+    box-shadow: none;
+  }
+  .login-error {
+    margin-top: 12px;
+    font-size: 12px;
+    color: #f87171;
+    min-height: 16px;
+    text-align: center;
   }
   .login-help {
     margin-top: 16px;
@@ -916,7 +950,17 @@
     <div class="login-logo"></div>
     <div class="login-title">WebOps Dashboard</div>
     <div class="login-subtitle">กรุณาเข้าสู่ระบบเพื่อใช้งาน<br>หากยังไม่ได้รับคำเชิญ ติดต่อผู้ดูแลระบบ</div>
-    <button class="login-btn" onclick="netlifyIdentity.open('login')">เข้าสู่ระบบ</button>
+
+    <!-- Custom login form using Netlify Identity's gotrue-js API directly.
+         We bypass the widget popup because it fails to render in some browsers -
+         calling gotrue.login() straight from a form is more reliable. -->
+    <form id="login-form" onsubmit="handleLogin(event); return false;">
+      <input type="email" id="login-email" placeholder="Email" required class="login-input" autocomplete="email">
+      <input type="password" id="login-password" placeholder="รหัสผ่าน" required class="login-input" autocomplete="current-password">
+      <button type="submit" class="login-btn" id="login-submit">เข้าสู่ระบบ</button>
+      <div class="login-error" id="login-error"></div>
+    </form>
+
     <div class="login-help">
       สำหรับสมาชิกในทีมเท่านั้น · ใช้ email ที่ได้รับคำเชิญ
     </div>
@@ -2323,6 +2367,51 @@ function showLogin() {
   document.getElementById('app').style.display = 'none';
   document.getElementById('user-chip').style.display = 'none';
   if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+}
+
+// Handles the custom login form submission.
+// Calls netlifyIdentity.gotrue.login() directly instead of using the widget popup
+// (the popup fails to render reliably in some browsers). On success the
+// netlifyIdentity 'login' event fires and showApp() takes over.
+async function handleLogin(event) {
+  event.preventDefault();
+  const emailEl = document.getElementById('login-email');
+  const passwordEl = document.getElementById('login-password');
+  const submitBtn = document.getElementById('login-submit');
+  const errorEl = document.getElementById('login-error');
+
+  const email = emailEl.value.trim();
+  const password = passwordEl.value;
+  if (!email || !password) return;
+
+  errorEl.textContent = '';
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'กำลังเข้าสู่ระบบ...';
+
+  try {
+    // gotrue.login(email, password, remember)
+    // `remember: true` persists the session in localStorage so user stays logged in.
+    const user = await netlifyIdentity.gotrue.login(email, password, true);
+    // showApp is triggered by the 'login' event handler set up below,
+    // but we call it here too in case the event doesn't fire.
+    showApp(user);
+  } catch (err) {
+    console.error('Login failed:', err);
+    // Common gotrue error messages
+    let msg = 'เข้าสู่ระบบไม่สำเร็จ';
+    if (err.json?.error_description) msg = err.json.error_description;
+    else if (err.message) msg = err.message;
+    // Translate common English errors to Thai for friendlier UX
+    if (/invalid.*credentials|no user found|invalid grant/i.test(msg)) {
+      msg = 'อีเมลหรือรหัสผ่านไม่ถูกต้อง';
+    } else if (/email not confirmed/i.test(msg)) {
+      msg = 'บัญชียังไม่ได้ยืนยัน กรุณาตรวจสอบอีเมล';
+    }
+    errorEl.textContent = msg;
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'เข้าสู่ระบบ';
+  }
 }
 
 if (window.netlifyIdentity) {
