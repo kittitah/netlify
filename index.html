@@ -906,9 +906,24 @@
     .app { grid-template-columns: 1fr; }
   }
 </style>
+<!-- Netlify Identity widget — handles user login/signup/recovery -->
+<script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
 </head>
 <body>
-<div class="app">
+<!-- Login screen shown until user is authenticated -->
+<div class="login-overlay" id="login-overlay">
+  <div class="login-card">
+    <div class="login-logo"></div>
+    <div class="login-title">WebOps Dashboard</div>
+    <div class="login-subtitle">กรุณาเข้าสู่ระบบเพื่อใช้งาน<br>หากยังไม่ได้รับคำเชิญ ติดต่อผู้ดูแลระบบ</div>
+    <button class="login-btn" onclick="netlifyIdentity.open('login')">เข้าสู่ระบบ</button>
+    <div class="login-help">
+      สำหรับสมาชิกในทีมเท่านั้น · ใช้ email ที่ได้รับคำเชิญ
+    </div>
+  </div>
+</div>
+
+<div class="app" id="app" style="display:none;">
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="brand">
@@ -997,6 +1012,11 @@
         <div class="page-subtitle" id="page-subtitle">ภาพรวมข้อมูลทั้งระบบ</div>
       </div>
       <div class="head-actions">
+        <div class="user-chip" id="user-chip" style="display:none;">
+          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+          <span class="user-chip-email" id="user-chip-email">—</span>
+          <button class="user-chip-logout" onclick="netlifyIdentity.logout()" title="ออกจากระบบ">ออก</button>
+        </div>
         <button class="btn btn-ghost" onclick="loadFromSheet()" title="ดึงข้อมูลใหม่จาก Sheet" id="btn-refresh">
           <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
           Refresh
@@ -1201,8 +1221,15 @@
 </div>
 
 <script>
-// ===== Data (loaded from Google Sheet CSV) =====
-const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRww1G-t6zqRlaqYPLAf0dv8ld-JzJkpadutf39qf-D2a2Dvt_pTmF-GFk3gGZj09Mbju2hlJQOY33f/pub?output=csv";
+// ===== Data (loaded via Netlify Function that proxies Google Sheet) =====
+// The Function requires a valid Netlify Identity JWT — so unauthenticated
+// visitors can't fetch the data even if they know the URL.
+// The Google Sheet URL itself lives in a Netlify env variable, not in this file.
+const SHEET_API_URL = "/api/sheet-data";
+
+// The public "view Sheet" URL — separate from the internal fetch URL.
+// This is only used for the "เปิด Sheet" button. Kept here so users can jump
+// to the source. If you'd rather hide this too, remove this const and the button in HTML.
 const SHEET_EDIT_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRww1G-t6zqRlaqYPLAf0dv8ld-JzJkpadutf39qf-D2a2Dvt_pTmF-GFk3gGZj09Mbju2hlJQOY33f/pub";
 
 // Column mapping by POSITION (0-indexed). Used because sheet has
@@ -1297,13 +1324,32 @@ async function loadFromSheet() {
   const banner = document.getElementById("sync-banner");
   if (banner) {
     banner.classList.remove("error");
-    banner.querySelector(".sync-text").textContent = "⏳ กำลังโหลดข้อมูลจาก Google Sheet...";
+    banner.querySelector(".sync-text").textContent = "⏳ กำลังโหลดข้อมูล...";
   }
   try {
-    // Cache-buster query param: forces fresh fetch when user hits Refresh
-    const url = SHEET_CSV_URL + "&_t=" + Date.now();
-    const res = await fetch(url);
+    // Get the current user's JWT token so the Netlify Function can authenticate the request.
+    // On production this is required (Function returns 401 without it).
+    // On local dev without Netlify Identity, token will be undefined — we'll fall back
+    // to a direct fetch so `python -m http.server` still works for development.
+    let token = null;
+    if (window.netlifyIdentity && netlifyIdentity.currentUser()) {
+      const user = netlifyIdentity.currentUser();
+      // jwt() refreshes the token if it's expired
+      token = await user.jwt();
+    }
+
+    const headers = { "Accept": "text/csv" };
+    if (token) headers["Authorization"] = "Bearer " + token;
+
+    // Cache-buster so we always get fresh data from Google
+    const res = await fetch(SHEET_API_URL + "?_t=" + Date.now(), { headers });
+
+    if (res.status === 401) {
+      // Session expired / not logged in — force a re-login
+      throw new Error("Session หมดอายุ — กรุณาเข้าสู่ระบบใหม่");
+    }
     if (!res.ok) throw new Error("HTTP " + res.status);
+
     const text = await res.text();
     const rows = parseCSV(text);
     data = rowsToRecords(rows);
@@ -2231,9 +2277,78 @@ function resetData() {
   showToast('คืนค่าเริ่มต้นเรียบร้อย', 'danger');
 }
 
-// Initial render shell, then load data from sheet
-setPage('dashboard');
-loadFromSheet();
+// ===== Netlify Identity auth + idle timeout =====
+// Two things happen here:
+// 1. Auth gate: the app stays hidden behind a login overlay until the user is authenticated.
+// 2. Idle timer: after 1 hour of no user activity, the page auto-reloads.
+//    - Reload counts as a new Cloudflare page view → better analytics
+//    - User stays logged in (Netlify Identity session persists in localStorage)
+//    - User also gets fresh data from the Google Sheet (bonus)
+
+const IDLE_TIMEOUT_MS = 60 * 60 * 1000;  // 1 hour
+let idleTimer = null;
+
+function resetIdleTimer() {
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    // Silent reload — no warning, no confirmation
+    window.location.reload();
+  }, IDLE_TIMEOUT_MS);
+}
+
+function startIdleTracking() {
+  // Any of these events counts as "user activity" and resets the 1-hour timer
+  const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
+  events.forEach(ev => document.addEventListener(ev, resetIdleTimer, { passive: true }));
+  resetIdleTimer();
+}
+
+function showApp(user) {
+  document.getElementById('login-overlay').style.display = 'none';
+  document.getElementById('app').style.display = '';
+  document.getElementById('user-chip').style.display = '';
+  document.getElementById('user-chip-email').textContent =
+    user.user_metadata?.full_name || user.email;
+  // Bootstrap the dashboard (only on first reveal)
+  if (!window._appBooted) {
+    window._appBooted = true;
+    setPage('dashboard');
+    loadFromSheet();
+    startIdleTracking();
+  }
+}
+
+function showLogin() {
+  document.getElementById('login-overlay').style.display = '';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('user-chip').style.display = 'none';
+  if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+}
+
+if (window.netlifyIdentity) {
+  netlifyIdentity.on('init', user => {
+    if (user) showApp(user);
+    else showLogin();
+  });
+  netlifyIdentity.on('login', user => {
+    showApp(user);
+    netlifyIdentity.close();
+  });
+  netlifyIdentity.on('logout', () => {
+    window._appBooted = false;
+    showLogin();
+  });
+  netlifyIdentity.on('error', err => console.error('Identity error:', err));
+} else {
+  // Fallback for local dev without the Netlify Identity script:
+  // just show the app so pages open when served from python -m http.server
+  console.warn('Netlify Identity not available — running in unprotected mode');
+  document.getElementById('login-overlay').style.display = 'none';
+  document.getElementById('app').style.display = '';
+  setPage('dashboard');
+  loadFromSheet();
+  startIdleTracking();
+}
 </script>
 <!-- Cloudflare Web Analytics -->
 <script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "d5b171b1459b4800b5d8e004f9af7fcb"}'></script>
