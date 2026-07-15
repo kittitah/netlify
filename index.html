@@ -2339,6 +2339,12 @@ if (window.netlifyIdentity) {
     showLogin();
   });
   netlifyIdentity.on('error', err => console.error('Identity error:', err));
+
+  // Force init on the current site's Identity endpoint.
+  // Auto-init can silently fail if the browser cached an older widget build
+  // or the site metadata isn't detected — calling init() explicitly guarantees
+  // the widget knows where to authenticate against.
+  netlifyIdentity.init();
 } else {
   // Fallback for local dev without the Netlify Identity script:
   // just show the app so pages open when served from python -m http.server
