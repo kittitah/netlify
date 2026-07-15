@@ -1,0 +1,12 @@
+# Netlify config — location of serverless functions and URL routing
+
+[build]
+  functions = "netlify/functions"
+
+# Pretty URL: browser fetches /api/sheet-data → routed to the function.
+# Hides the /.netlify/functions/ path from the URL.
+[[redirects]]
+  from = "/api/sheet-data"
+  to = "/.netlify/functions/sheet-data"
+  status = 200
+  force = true
